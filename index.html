@@ -693,6 +693,7 @@
                     const countryName = result.address.country || null;
 
                     return { 
+                        name: result.name || cityName, // <-- 这一行是新增或修改的！
                         lat: parseFloat(result.lat), 
                         lng: parseFloat(result.lon), 
                         country_code: countryCode, 
