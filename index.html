@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>我的旅行地图 (Google Sheets 同步版)</title>
+    <title>我的旅行地图 (批量添加城市)</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -53,7 +53,9 @@
             color: #333;
         }
         #map { height: 600px; width: 90%; max-width: 1200px; margin-top: 20px; border: 1px solid #ccc; }
-        .controls { margin-top: 20px; display: flex; gap: 10px; }
+        .controls { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; } /* 调整布局 */
+        #cityInput { flex-grow: 1; min-width: 200px; } /* 让输入框更灵活 */
+
         #cityListContainer {
             margin-top: 20px;
             width: 90%;
@@ -189,8 +191,7 @@
     </div>
 
     <div class="controls">
-        <input type="text" id="cityInput" placeholder="输入城市名称">
-        <button id="addCityBtn">添加城市</button>
+        <input type="text" id="cityInput" placeholder="输入城市名称 (可批量添加，用分号;隔开)"> <button id="addCityBtn">添加城市</button>
         <div id="loadingSpinner" class="loading-spinner"></div>
     </div>
 
@@ -213,7 +214,7 @@
         let currentUserId = null; 
 
         // --- 将此替换为你部署的 Google Apps Script Web 应用 URL ---
-        const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzJcre1R627gvcldo1Jd3KA2kTpQHZipwp6B_Y_ncf3cI40W_NE6eTh4Pdi1sxSnJzN/exec'; 
+        const GOOGLE_APPS_SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE'; 
         
         const NOMINATIM_GEOCODE_URL = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1';
         const COUNTRIES_GEOJSON_URL = 'https://unpkg.com/world-atlas@2.0.2/countries-50m.json'; 
@@ -249,17 +250,15 @@
             } catch (error) {
                 console.error("从 Google Sheets 读取数据失败:", error);
                 alert("无法从 Google Sheets 加载数据。请检查 Apps Script URL 和权限设置！错误: " + error.message);
-                allUsersData = {}; // 清空数据，避免旧数据干扰
+                allUsersData = {}; 
             }
         }
 
         async function sendDataToAppsScript(action, payload) {
             try {
-                const response = await fetch(`${GOOGLE_APPS_SCRIPT_URL}?action=${action}`, { // HERE IS THE FIX: action is correctly appended
-                    method: 'POST', // POST 请求用于写入/修改数据
-                    headers: {
-                        'Content-Type': 'text/plain;charset=utf-8' // Apps Script 期望 text/plain
-                    },
+                const response = await fetch(`${GOOGLE_APPS_SCRIPT_URL}?action=${action}`, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify(payload)
                 });
                 if (!response.ok) {
@@ -268,7 +267,8 @@
                 const data = await response.json();
                 if (data.error) throw new Error(data.error);
                 return data;
-            } catch (error) {
+            }
+            catch (error) {
                 console.error(`Error during ${action} API call:`, error);
                 alert(`操作失败 (${action})：${error.message}`);
                 return null;
@@ -348,7 +348,6 @@
             const newUserId = `user_${Date.now()}`; 
             const result = await sendDataToAppsScript('addUser', { userId: newUserId, username: newUsername });
             if (result) {
-                // Because Apps Script successfully processed, we refetch all data to get the latest state
                 await fetchAllUsersData(); 
                 alert(`用户 "${newUsername}" 已添加！`);
                 newUsernameInput.value = '';
@@ -378,7 +377,6 @@
 
             const result = await sendDataToAppsScript('deleteUser', { userId: currentUserId });
             if (result) {
-                // Because Apps Script successfully processed, we refetch all data to get the latest state
                 await fetchAllUsersData(); 
                 currentUserId = null;
                 populateUserSelect(); 
@@ -416,7 +414,6 @@
 
             const result = await sendDataToAppsScript('editUser', { userId: currentUserId, newUsername: newUsername });
             if (result) {
-                // Because Apps Script successfully processed, we refetch all data to get the latest state
                 await fetchAllUsersData(); 
                 alert(`用户名已从 "${oldUsername}" 修改为 "${newUsername}"！`);
                 populateUserSelect(); 
@@ -481,15 +478,15 @@
                         // Ensure 'Visited' is treated as boolean, checking for string 'TRUE' or number 1
                         const isVisited = String(city.Visited).toLowerCase() === 'true' || city.Visited === 1;
                         if (isVisited) {
-                            const latLngKey = `${city.Lat.toFixed(5)},${city.Lng.toFixed(5)}`;
-                            
+                            const latLngKey = `${city.Lat.toFixed(5)},${city.Lng.toFixed(5)}`; // Use city.Lat/city.Lng
+
                             if (!allVisitedCitiesMap.has(latLngKey)) {
                                 allVisitedCitiesMap.set(latLngKey, {
                                     id: city.CityID, // Use CityID for mapping
                                     name: city.Name, // Use Name
-                                    lat: city.Lat, 
-                                    lng: city.Lng,
-                                    country_name: city.CountryName,
+                                    lat: city.Lat,   // Use Lat
+                                    lng: city.Lng,   // Use Lng
+                                    country_name: city.CountryName, // Use CountryName
                                     userIds: new Set([userId]),
                                     usernames: new Set([username]),
                                     originalCities: [city] 
@@ -516,8 +513,8 @@
                         "type": "Feature",
                         "properties": {
                             "name": consolidatedCity.name,
-                            "lat": consolidatedCity.lat,
-                            "lng": consolidatedCity.lng,
+                            "lat": consolidatedCity.lat, // Pass lat
+                            "lng": consolidatedCity.lng, // Pass lng
                             "country_name": consolidatedCity.country_name,
                             "isMultiUser": isMultiUser, 
                             "displayColor": markerColor, 
@@ -525,7 +522,7 @@
                         },
                         "geometry": {
                             "type": "Point",
-                            "coordinates": [consolidatedCity.lng, consolidatedCity.lat]
+                            "coordinates": [consolidatedCity.lng, consolidatedCity.lat] // GeoJSON coords
                         }
                     };
                 })
@@ -604,21 +601,22 @@
 
                 const nameSpan = document.createElement('span');
                 nameSpan.className = 'city-name';
-                nameSpan.textContent = `${city.Name} (${city.CountryName || '未知国家'})`; // 注意这里是大写 Name/CountryName
+                // IMPORTANT: Use city.Name and city.CountryName for display
+                nameSpan.textContent = `${city.Name} (${city.CountryName || '未知国家'})`; 
                 cityItem.appendChild(nameSpan);
 
                 const statusSpan = document.createElement('span');
-                // 确保从 Sheets 读取的 visited 字段是布尔值
+                // Ensure 'Visited' is treated as boolean, checking for string 'TRUE' or number 1
                 const isVisited = String(city.Visited).toLowerCase() === 'true' || city.Visited === 1;
                 statusSpan.className = 'visited-status ' + (isVisited ? 'status-visited' : 'status-not-visited');
                 statusSpan.textContent = isVisited ? '去过' : '未去过';
-                statusSpan.onclick = () => updateCityStatusLocally(city.CityID, !isVisited); // 使用 CityID
+                statusSpan.onclick = () => updateCityStatusLocally(city.CityID, !isVisited); // Use CityID
                 cityItem.appendChild(statusSpan);
 
                 const removeButton = document.createElement('button');
                 removeButton.className = 'remove-btn';
                 removeButton.textContent = '删除';
-                removeButton.onclick = () => deleteCityLocally(city.CityID); // 使用 CityID
+                removeButton.onclick = () => deleteCityLocally(city.CityID); // Use CityID
                 cityItem.appendChild(removeButton);
 
                 cityListDiv.appendChild(cityItem);
@@ -631,25 +629,25 @@
                 alert('请先选择或添加用户！');
                 return null;
             }
-            // 使用 CityID 和 UserID 对应 Sheets 列名
+            // Use CityID and UserID corresponding to Sheets column names
             const payload = { 
-                cityId: `city_${Date.now()}`, // 临时生成一个 CityID
+                cityId: `city_${Date.now()}`, // Temporary CityID
                 userId: currentUserId, 
                 name: cityData.name, 
                 lat: cityData.lat, 
                 lng: cityData.lng, 
-                countryCode: cityData.country_code, 
-                countryName: cityData.country_name, 
+                countryCode: cityData.country_code, // Use country_code
+                countryName: cityData.country_name, // Use country_name
                 visited: true 
             };
             
             const result = await sendDataToAppsScript('addCity', payload);
             if (result) {
-                // 成功后重新从 Apps Script 拉取所有数据并更新UI
+                // Success, refetch all data from Apps Script to update UI
                 await fetchAllUsersData(); 
                 renderCityMarkers(); 
                 renderCityList();
-                alert('城市添加成功！');
+                // No alert here, consolidate success message after batch
                 return true;
             }
             return false;
@@ -659,7 +657,6 @@
             const payload = { cityId: cityId, visited: visitedStatus };
             const result = await sendDataToAppsScript('updateCityStatus', payload);
             if (result) {
-                // 成功后重新从 Apps Script 拉取所有数据并更新UI
                 await fetchAllUsersData(); 
                 renderCityMarkers(); 
                 renderCityList();
@@ -670,7 +667,6 @@
             const payload = { cityId: cityId };
             const result = await sendDataToAppsScript('deleteCity', payload);
             if (result) {
-                // 成功后重新从 Apps Script 拉取所有数据并更新UI
                 await fetchAllUsersData(); 
                 renderCityMarkers(); 
                 renderCityList();
@@ -678,7 +674,7 @@
             }
         }
 
-        // --- 地理编码函数 (不变) ---
+        // --- Geocoding function ---
         async function geocodeCity(cityName) {
             const spinner = document.getElementById('loadingSpinner');
             spinner.style.display = 'inline-block';
@@ -691,9 +687,12 @@
                     const result = data[0];
                     const countryCode = result.address.country_code ? result.address.country_code.toUpperCase() : null;
                     const countryName = result.address.country || null;
+                    
+                    // IMPORTANT: Ensure 'name' is always populated from most reliable Nominatim fields
+                    const bestName = result.address.city || result.address.town || result.address.village || result.address.county || result.name || result.display_name;
 
                     return { 
-                        name: result.name || cityName, // <-- 这一行是新增或修改的！
+                        name: bestName, 
                         lat: parseFloat(result.lat), 
                         lng: parseFloat(result.lon), 
                         country_code: countryCode, 
@@ -711,7 +710,7 @@
             }
         }
 
-        // --- 事件监听 (调用新的同步函数) ---
+        // --- Event listeners ---
         document.getElementById('addNewUserBtn').addEventListener('click', handleAddNewUser);
         document.getElementById('userSelect').addEventListener('change', handleUserSelectChange);
         document.getElementById('delete-user-btn').addEventListener('click', handleDeleteCurrentUser); 
@@ -723,35 +722,79 @@
                 return;
             }
             const cityInput = document.getElementById('cityInput');
-            const cityName = cityInput.value.trim();
+            const cityNamesInput = cityInput.value.trim(); // Get the full input string
 
-            if (!cityName) {
+            if (!cityNamesInput) {
                 alert('请输入城市名称！');
                 return;
             }
 
-            // 检查当前用户是否已添加该城市 (在本地 allUsersData 中检查)
-            if (allUsersData[currentUserId].cities.some(city => city.Name.toLowerCase() === cityName.toLowerCase())) { // 注意这里是 city.Name
-                alert('您已添加过该城市！');
-                cityInput.value = '';
+            const cityNames = cityNamesInput.split(';').map(name => name.trim()).filter(name => name); // Split by semicolon, trim, remove empty
+
+            if (cityNames.length === 0) {
+                alert('请输入有效的城市名称，或用分号隔开。');
                 return;
             }
 
-            const location = await geocodeCity(cityName);
-            if (location) {
-                const cityData = {
-                    name: location.name, // 使用 Nominatim 结果中的名称 (Nominatim results directly have .name property too)
-                    lat: location.lat, 
-                    lng: location.lng,
-                    country_code: location.country_code, 
-                    country_name: location.country_name
-                };
-                const success = await addCityLocally(cityData); // 调用同步添加函数
-                if (success) {
-                    cityInput.value = '';
-                    map.setView([location.lat, location.lng], 5); 
+            let successfulAdds = 0;
+            let failedAdds = 0;
+            let alreadyAdded = 0;
+            
+            const spinner = document.getElementById('loadingSpinner');
+            spinner.style.display = 'inline-block'; // Show spinner during batch add
+
+            try {
+                for (const cityName of cityNames) {
+                    // Check if the current user has already added this city (case-insensitive)
+                    // Note: Need to fetch from Sheets after each add to get the latest state for accurate check
+                    // Or, more efficiently, check against local `allUsersData[currentUserId].cities`
+                    // For batch, let's just use local data as primary check before sending to Apps Script
+                    if (allUsersData[currentUserId].cities.some(city => String(city.Name).toLowerCase() === cityName.toLowerCase())) { 
+                        alreadyAdded++;
+                        console.warn(`城市 "${cityName}" 已被当前用户添加，跳过。`);
+                        continue; // Skip to the next city
+                    }
+
+                    const location = await geocodeCity(cityName); // Geocode each city
+                    if (location) {
+                        const cityData = {
+                            name: location.name, // Use the name from geocoding result
+                            lat: location.lat, 
+                            lng: location.lng, 
+                            country_code: location.country_code, 
+                            country_name: location.country_name
+                        };
+                        const success = await addCityLocally(cityData); // Add to Sheets via Apps Script
+                        if (success) {
+                            successfulAdds++;
+                        } else {
+                            failedAdds++;
+                        }
+                    } else {
+                        failedAdds++;
+                    }
                 }
+            } finally {
+                spinner.style.display = 'none'; // Hide spinner after batch add
             }
+
+            cityInput.value = ''; // Clear input
+            
+            // Consolidate final message
+            let finalMessage = `批量添加完成！\n成功添加: ${successfulAdds} 个城市。\n`;
+            if (alreadyAdded > 0) {
+                finalMessage += `已存在: ${alreadyAdded} 个城市 (跳过)。\n`;
+            }
+            if (failedAdds > 0) {
+                finalMessage += `失败: ${failedAdds} 个城市 (请检查名称)。`;
+            }
+            alert(finalMessage);
+
+            // Re-fetch all data and render UI one last time after the whole batch
+            await fetchAllUsersData(); 
+            renderCityMarkers(); 
+            renderCityList();
+            
         });
 
         // 页面加载完成时初始化
