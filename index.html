@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>我的旅行地图 (批量添加城市)</title>
+    <title>我的旅行地图 (批量添加城市 - 修复分号识别)</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -644,9 +644,10 @@
             const result = await sendDataToAppsScript('addCity', payload);
             if (result) {
                 // Success, refetch all data from Apps Script to update UI
-                await fetchAllUsersData(); 
-                renderCityMarkers(); 
-                renderCityList();
+                // We'll do a single fetchAllUsersData after the entire batch is done
+                // so no need to fetch here
+                // renderCityMarkers(); 
+                // renderCityList();
                 // No alert here, consolidate success message after batch
                 return true;
             }
@@ -722,14 +723,18 @@
                 return;
             }
             const cityInput = document.getElementById('cityInput');
-            const cityNamesInput = cityInput.value.trim(); // Get the full input string
+            const cityNamesInputRaw = cityInput.value.trim(); // Get the raw input string
 
-            if (!cityNamesInput) {
+            if (!cityNamesInputRaw) {
                 alert('请输入城市名称！');
                 return;
             }
 
-            const cityNames = cityNamesInput.split(';').map(name => name.trim()).filter(name => name); // Split by semicolon, trim, remove empty
+            // --- 关键修改：增强分号识别和通用分隔符处理 ---
+            const cityNames = cityNamesInputRaw
+                .replace(/；/g, ';') // 将全角分号替换为半角分号
+                .split(/\s*;\s*/)   // 用正则表达式分割，允许分号前后有任意空格
+                .filter(name => name); // 过滤掉空字符串，防止连续分号或首尾分号产生空项
 
             if (cityNames.length === 0) {
                 alert('请输入有效的城市名称，或用分号隔开。');
@@ -746,9 +751,7 @@
             try {
                 for (const cityName of cityNames) {
                     // Check if the current user has already added this city (case-insensitive)
-                    // Note: Need to fetch from Sheets after each add to get the latest state for accurate check
-                    // Or, more efficiently, check against local `allUsersData[currentUserId].cities`
-                    // For batch, let's just use local data as primary check before sending to Apps Script
+                    // We check against the local `allUsersData` as the primary check before sending to Apps Script
                     if (allUsersData[currentUserId].cities.some(city => String(city.Name).toLowerCase() === cityName.toLowerCase())) { 
                         alreadyAdded++;
                         console.warn(`城市 "${cityName}" 已被当前用户添加，跳过。`);
@@ -758,13 +761,13 @@
                     const location = await geocodeCity(cityName); // Geocode each city
                     if (location) {
                         const cityData = {
-                            name: location.name, // Use the name from geocoding result
+                            name: location.name, 
                             lat: location.lat, 
                             lng: location.lng, 
                             country_code: location.country_code, 
                             country_name: location.country_name
                         };
-                        const success = await addCityLocally(cityData); // Add to Sheets via Apps Script
+                        const success = await addCityLocally(cityData); 
                         if (success) {
                             successfulAdds++;
                         } else {
